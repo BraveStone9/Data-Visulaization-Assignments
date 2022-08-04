@@ -1,0 +1,10 @@
+name,type,start,stop,strand
+geneA,transcript,2000,7764,+
+geneA,exon,2700,5100,+
+geneA,exon,6000,6800,+
+geneB,transcript,9000,12720,-
+geneB,exon,9900,10100,-
+geneB,exon,11000,11500,-
+geneB,exon,11900,12450,-
+geneC,transcript,14850,18000,+
+geneC,exon,15700,17090,+
