@@ -1,0 +1,304 @@
+---
+title: "Final assignment for the course Data Visualization with R (SS22-MAID)"
+output: html_notebook
+author: "Aditya Yadav(mat no.:12201789)"
+---
+
+**Objectives** This project attempts to visualize the comparison and affect of type A&B acute hepatitis on the 50 American States from 2010 to 2016. Further evaluation of spread and decline of the diseases through the given time period.
+
+**Methods** For evaluation of affects of the diseases we will analyse its affects on the population density of each state. For comparison this project will present the correlation between the spread of diseases.
+
+**Data Preparation** The data for type A&B acute hepatitis was acquired from the Project Tycho [site](https://www.tycho.pitt.edu/ "Project Tycho"). The data used is from year 2010-2016. And the population data was downloaded from the United States Census Bureau [website](https://www.census.gov/data/datasets/time-series/demo/popest/2010s-state-total.html "US census").
+
+Required libraries and modules.
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(usmap)
+library(Hmisc)
+library(corrplot)
+library(viridis)
+```
+
+Loading the Data-set
+
+```{r}
+Acute_Hept_A <- read.csv(file ='Dataset/US.25102003.csv', fileEncoding="UTF-8-BOM", na.strings = '..')
+Acute_Hept_B <- read.csv(file ='Dataset/US.76795007.csv', fileEncoding="UTF-8-BOM", na.strings = '..')
+```
+
+**EDA**
+
+1.  By str() function we can see that both data set have similar Columns and almost same number of rows.
+
+```{r}
+str(Acute_Hept_A)
+```
+
+```{r}
+str(Acute_Hept_B)
+
+```
+
+2.  We can observe that the Columns with date have type 'chr' instead of date, and it is better to change the date columns to a date format. Due to the large number of data rows for this project we will stick with Year range of 2010-2016.
+
+```{r}
+Acute_Hept_A$PeriodEndDate <- as.Date(Acute_Hept_A$PeriodEndDate)
+Acute_Hept_A$PeriodEndDate <- format(Acute_Hept_A$PeriodEndDate, format="%Y")
+Acute_Hept_A <- filter(Acute_Hept_A, PeriodEndDate >= 2010 & PeriodEndDate <=2017)
+
+Acute_Hept_B$PeriodEndDate <- as.Date(Acute_Hept_B$PeriodEndDate)
+Acute_Hept_B$PeriodEndDate <- format(Acute_Hept_B$PeriodEndDate, format="%Y")
+Acute_Hept_B <- filter(Acute_Hept_B, PeriodEndDate >= 2010 & PeriodEndDate <=2017)
+
+
+```
+
+3.  Selecting only relevant columns and dropping all others irrelevant information. Renaming columns for better understanding and correcting the State code strings to match external dataset values.
+
+```{r}
+Acute_Hept_A <- setNames(aggregate(Acute_Hept_A$CountValue,by=list(Acute_Hept_A$Admin1Name,Acute_Hept_A$Admin1ISO, Acute_Hept_A$PeriodEndDate), FUN = sum), c("US_State", "state", "Year", "Recorded_Cases"))
+
+Acute_Hept_B <- setNames(aggregate(Acute_Hept_B$CountValue,by=list(Acute_Hept_B$Admin1Name,Acute_Hept_B$Admin1ISO, Acute_Hept_B$PeriodEndDate), FUN = sum), c("US_State", "state", "Year", "Recorded_Cases"))
+
+Acute_Hept_A$state <- gsub("US-","",as.character(Acute_Hept_A$state))
+Acute_Hept_B$state <- gsub("US-","",as.character(Acute_Hept_B$state))
+```
+
+4.  By observing the data we can clearly see that both data sets have not just the official US states but also the [`Dependent Areas`](https://uk.usembassy.gov/states-of-the-union-states-of-the-u-s/#:~:text=States%20of%20the%20U.S.,and%2013%20member%20city%20council. "US States and union") of USA, and for the purpose of this project we will keep only the official 50 states and Washington Dc of USA.
+
+```{r}
+#for Acute_Hept_A
+Acute_Hept_A <- Acute_Hept_A[!(Acute_Hept_A$US_State=="AMERICAN SAMOA" | Acute_Hept_A$US_State=="GUAM" | Acute_Hept_A$US_State=="NORTHERN MARIANA ISLANDS" | Acute_Hept_A$US_State=="PUERTO RICO" | Acute_Hept_A$US_State=="VIRGIN ISLANDS, U.S."),]
+
+#for Acute_Hept_B
+Acute_Hept_B <- Acute_Hept_B[!(Acute_Hept_B$US_State=="AMERICAN SAMOA" | Acute_Hept_B$US_State=="GUAM" | Acute_Hept_B$US_State=="NORTHERN MARIANA ISLANDS" | Acute_Hept_B$US_State=="PUERTO RICO" | Acute_Hept_B$US_State=="VIRGIN ISLANDS, U.S."),]
+
+```
+
+```{r}
+str(Acute_Hept_A)
+head(Acute_Hept_A)
+```
+
+
+
+5.  Loading Population dataset of USA for corresponding years.
+
+```{r}
+US_Pop <- read.csv(file ='Dataset/PopulationUS.csv', fileEncoding="UTF-8-BOM", na.strings = '..')
+colnames(US_Pop) <- gsub("X", "", colnames(US_Pop))
+
+US_Pop <- US_Pop[c(1,4,5,6,7,8,9,10,11)]
+US_Pop <- setNames(cbind(US_Pop[1], stack(US_Pop[2:8])), c("US_State", "Population", "Year"))
+US_Pop$US_State <- toupper(US_Pop$US_State)
+
+head(US_Pop)
+```
+
+6.  Creating new Dataset by using the population data set, by this we can calculate the affect of diseases per 1000 persons.
+
+```{r}
+#population dataset with Acute_Hept_A 
+Pop_with_Hept_A <- right_join(US_Pop, Acute_Hept_A, by=c("US_State"="US_State", "Year"="Year")) %>% na.omit()
+#population dataset with Acute_Hept_B
+Pop_with_Hept_B <- right_join(US_Pop, Acute_Hept_B, by=c("US_State"="US_State", "Year"="Year")) %>% na.omit()
+
+#Creating new columns <AffectedCasesPer1000> in both recently created datasets.
+Pop_with_Hept_A$AffectedCasesPer1000<-(Pop_with_Hept_A$Recorded_Cases/Pop_with_Hept_A$Population)*1000
+Pop_with_Hept_B$AffectedCasesPer1000<-(Pop_with_Hept_B$Recorded_Cases/Pop_with_Hept_B$Population)*1000
+
+head(Pop_with_Hept_A)
+head(Pop_with_Hept_B)
+```
+
+7.  Bar plots to see the individual affect of type A&B Hepatitis on USA.
+
+```{r, fig.width=10, fig.height=9}
+#Acute type A viral hepatitis
+Acute_Hept_A %>% 
+  ggplot(aes(x=Recorded_Cases, y=US_State, fill=Recorded_Cases))+
+  geom_bar(stat = 'identity') +
+  scale_fill_gradient(name="Cases") +
+  labs(x = "Recorded Cases",
+       y = "States",
+       title="Acute type A viral hepatitis" ) +
+  theme(legend.position = "none")
+  
+#Acute type B viral hepatitis
+Acute_Hept_B %>% 
+  ggplot(aes(x=Recorded_Cases, y=US_State, fill=Recorded_Cases))+
+  geom_bar(stat = 'identity') +
+  scale_fill_gradient(name="Cases") +
+  labs(x = "Recorded Cases",
+       y = "States",
+       title="Acute type B viral hepatitis" ) +
+  theme(legend.position = "none")
+
+```
+
+-   The above bar charts shows that some state are affected more drastically by the diseases than other state. Lets put the data on a map to better understand the affect visually.
+
+8.  The affect of both type A&B Hepatitis on USA with two maps. -For visualizing on the map we will calculate the total affect of respective diseases on every 1000 persons in every state's population.
+
+```{r}
+#first creating a temporary data-frame which will hold states and sum of recorded
+#cases in that state
+tempA <- Pop_with_Hept_A[,c(4,6)] %>% 
+  group_by(state) %>% 
+  summarise_all(sum)
+tempB <- Pop_with_Hept_B[,c(4,6)] %>% 
+  group_by(state) %>% 
+  summarise_all(sum)
+
+head(tempA)
+head(tempB)
+```
+
+```{r, fig.width=16, fig.height=8}
+#putting data on map
+#for Affect of Type A Acute Hepatitis 
+plot_usmap(data = tempA, values = "AffectedCasesPer1000", color = "#980043", labels = TRUE)+
+  scale_fill_continuous(low = "#F1EEF6", high= "#980043",
+                        name = "No. of Recorded Cases per 1000 people",
+                        label = scales::comma)+
+  labs(title = "Affect of Type A Acute Hepatitis")+
+  theme(legend.position = "right")
+
+#for Affect of Type A Acute Hepatitis 
+plot_usmap(data = tempB, values = "AffectedCasesPer1000", color = "#980043", labels = TRUE)+
+  scale_fill_continuous(low = "#F1EEF6", high= "#980043",
+                        name = "No. of Recorded Cases per 1000 people",
+                        label = scales::comma)+
+  labs(title = "Affect of Type B Acute Hepatitis")+
+  theme(legend.position = "right")
+
+```
+
+9.  By the graphical representation on bar graph and map we can observe the following points:
+    -   For Type A Acute Hepatitis California has the highest number of recorded cases.
+    -   For Type B Acute Hepatitis Florida has the highest number of recorded cases.
+    -   Both California and Florida have the higher number of cases in both diseases.
+    -   The affect of Type A acute hepatitis was almost uniform on every state's population density, but for Type B acute hepatitis the affect was more concentrated to eastern states.
+
+Combining both datasets for further analyzing and visualizing.
+
+```{r}
+#creating a combined dataframe for both diseases.
+combined_DATA <- right_join(Pop_with_Hept_A,Pop_with_Hept_B,by=c("US_State"="US_State","state"="state","Population"="Population", "Year"="Year"), copy=FALSE, suffix=c("_Hept_A","_Hept_B")) %>% 
+  select(- Population) %>% 
+  na.omit()
+
+head(combined_DATA)
+```
+
+-Visualizing the the number of cases in each year in USA with **Barchart**
+
+```{r}
+#temporary data frame to hold the transformed combined dataset.
+temp <- combined_DATA[, c(1,2,3,4,6)] %>% 
+  pivot_longer(c(4,5), names_to = "Disease", values_to = "Cases")
+
+head(temp)
+```
+
+```{r fig.width=15, fig.height=9}
+#barchart 
+temp %>% 
+  ggplot(aes(x=Cases,y=Year, fill=Disease))+
+  geom_bar(stat = "identity", position = "dodge")+
+  coord_flip()+
+  scale_fill_viridis(discrete = T,labels = c("Acute Hepatitis type A", "Acute Hepatitis type B"))+
+  labs(title = "Number of cases for type A&B acute hepatitis from 2010 to 2016",
+       x = "No. of Recorded cases",
+       y = "Year")+
+  theme(text = element_text(size=20),legend.position = "bottom")
+```
+
+-   From the above chart we can observe that over the period of 2010-2016 the Hepatitis type B has more effect as compared to Hepatitis type A.
+-   It can also be observed that both diseases declined for sometime in between the years before spreading again in the end of 2016.
+
+-For further comparison we can calculate and visualize the correlation between both diseases.
+
+```{r}
+#correlation between both diseases
+correlation = rcorr(as.matrix(combined_DATA[,-c(1,2,3)]))
+correlation
+```
+
+-   By the above correlation matrix we can see there is small amount of correlation between both diseases.
+-   The smaller the p-value, the more significant the correlation.
+-   We can also confirm this with visualizing the same correlation on a plot.
+
+```{r fig.width=15, fig.height=9}
+correlation = cor(combined_DATA[,-c(1,2,3)])
+view(correlation)
+write.table(correlation, "correlation.txt")
+corrplot(correlation, type = "upper", order = "hclust", 
+         tl.col = "black", tl.srt = 30, title = "Correlation Plot",  mar=c(0,0,2,0))
+```
+
+-   For the correlation to appear in the plot, the stronger the color and the bigger the size, the higher the correlation. Above chart and matrix concludes that the two variable are correlated to some extent.
+
+-   Further visualizing the the number of cases in each state with respect to each year in line graph, where each line represent an year.
+
+```{r fig.width=13, fig.height=8}
+#temp dataframe created earlier with the transformed data from combined_DATA dataset.
+temp %>% 
+  ggplot(aes(US_State, Cases, group = Year, colour = Year))+
+  geom_line(size = 0.5)+
+  geom_point(shape = 18, size = 2)+
+  coord_flip()+
+  labs(title = "Comparison of type A&B acute hepatitis from 2010 to 2016 in US states",
+       x = "US States",
+       y = "No. of Recorded Cases")+
+  facet_wrap(~Disease, labeller = labeller(Disease = c("Recorded_Cases_Hept_A" = "Acute Hepatitis type A", "Recorded_Cases_Hept_B" = "Acute Hepatitis type B" )))+
+  theme()
+```
+
+-   Above line chart though insufficiently, is able to tell the trend of diseases in each state over the years.
+
+-   Due to the high number of states it is difficult to visualize the trend smoothly, so taking the top 15 states for both diseases.
+
+-   For calculating the top 15 states we will calculate the mean affect of both diseases in each state and will subset the states with top 15 mean values.
+
+```{r}
+#joining tempA and tempB data frames to calculate the meanAffect of both diseases.
+top15combine <- right_join(tempA,tempB, by=c("state"="state"), copy=FALSE, suffix=c("_Hept_A","_Hept_B")) %>% na.omit()
+#calculating mean of Affected cases per 10000 people from both diseases.
+top15combine$meanAffect <- rowMeans(top15combine[,c("AffectedCasesPer1000_Hept_A","AffectedCasesPer1000_Hept_B")])
+#keeping top 15 mean values states for further calculations.
+top15combine <- top15combine[order(top15combine$meanAffect, decreasing = TRUE),]
+top15combine <- subset(top15combine,select = -c(AffectedCasesPer1000_Hept_A,AffectedCasesPer1000_Hept_B))
+top15combine <- head(top15combine, 15)
+
+#combining this data with main combined_DATA to get top 15 stats.
+top15combine <- right_join(top15combine, combined_DATA, by=c("state"="state")) %>% na.omit()
+top15combine <- top15combine[, c(1,3,4,5,7)] %>%
+  pivot_longer(c(4,5), names_to = "Disease", values_to = "Cases")
+
+top15combine
+```
+
+-   Visualizing the data for top 15 affected states.
+
+```{r fig.width=13, fig.height=8}
+#Plotting the above line graph with 15 most affected states
+top15combine %>% 
+  ggplot(aes(Year, Cases, group = US_State, fill = US_State))+
+  geom_bar(stat = "identity", position = "stack", color="black")+
+  scale_fill_viridis(discrete = T)+
+  labs(title = "Comparison of type A&B acute hepatitis from 2010 to 2016 in selected US states",
+       x = "Year",
+       y = "No. of Recorded cases")+
+  coord_flip()+
+  facet_wrap(~Disease, labeller = labeller(Disease = c("Recorded_Cases_Hept_A" = "Acute Hepatitis type A", "Recorded_Cases_Hept_B" = "Acute Hepatitis type B" )))+
+  theme()
+```
+
+-   The graph above confirm through the data that Type B acute Hepatitis has more effect over the years and both diseases after a subtle decline started to spread again.
+
+**Observation and Result**\
+I observed that Hepatitis B has declined faster than Hepatitis A over a period of time frame. However Hepatitis A appears to initially decline faster until 2012, and Hepatitis B seems to increase while A seems to increase too, then later both diseases saw a jump in number of recorded cases.
