@@ -1,0 +1,2 @@
+# Data-Visulaization-Assignments
+A Data Visualization task was given to me in my first semester during my master's. There are two parts, one with R: In this, I have to analyze the dataset from the Tycho.org website and select a problem, and then further perform EDA on the data. The second was Data Viz with Python: In this, we have to recreate plots using the provided dataset and then provide proper documentation of the visualization presented.
